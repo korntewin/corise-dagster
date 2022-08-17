@@ -1,6 +1,5 @@
 import csv
 from datetime import datetime
-from heapq import nlargest
 from typing import List
 
 from dagster import (
@@ -60,16 +59,39 @@ def get_s3_data(context):
     return output
 
 
-@op
-def process_data():
-    pass
+@op(
+	config_schema={"nlargest": int},
+	out=DynamicOut(dagster_type=Aggregation)
+)
+def process_data(context, stocks: List[Stock]):
+
+	def stck_to_dagg(stock: Stock, key: str) -> DynamicOutput[Aggregation]:
+		return DynamicOutput(
+			Aggregation(
+				date=stock.date,
+				high=stock.high
+			),
+			mapping_key=key
+		)
+
+	n_largest = context.op_config["nlargest"]
+	sorted_stocks = sorted(
+		stocks,
+		key=lambda stock: stock.high,
+		reverse=True
+	)[:n_largest]
+
+	for i, stock in enumerate(sorted_stocks):
+		yield stck_to_dagg(stock, str(i))
 
 
 @op
-def put_redis_data():
+def put_redis_data(agg: Aggregation):
     pass
 
 
 @job
 def week_1_pipeline():
-    pass
+	stocks = get_s3_data()
+	aggs = process_data(stocks)
+	aggs.map(put_redis_data)
