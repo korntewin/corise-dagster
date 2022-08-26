@@ -1,12 +1,12 @@
 import csv
+import subprocess
 from typing import Iterator
 from unittest.mock import MagicMock
 
 import boto3
 import redis
-from regex import W
 import sqlalchemy
-from dagster import Field, Int, String, resource
+from dagster import Field, Int, String, resource, InitResourceContext
 
 
 # Clients
@@ -57,6 +57,16 @@ class Redis:
     def put_data(self, name: str, value: str):
         self.client.set(name, value)
 
+
+class Dbt:
+    def __init__(self, prj_dir: str, prf_dir: str, ignore_handled_error: bool, target: str):
+        self.prj_dir = prj_dir
+        self.prf_dir = prf_dir
+        self.ignore_handled_error = ignore_handled_error
+        self.target = target
+
+    def run(self) -> None:
+        subprocess.run(["dbt", "run", "--project-dir", self.prj_dir, "--profiles-dir", self.prf_dir])
 
 # Resources
 @resource(
@@ -121,4 +131,21 @@ def redis_resource(context):
     return Redis(
         host=context.resource_config["host"],
         port=context.resource_config["port"],
+    )
+
+
+@resource(
+    config_schema={
+        "prj_dir": str,
+        "prf_dir": str,
+        "ignore_handled_error": str,
+        "target": str,
+    }
+)
+def dbt_resource(context: InitResourceContext) -> Dbt:
+    return Dbt(
+        prj_dir=context.resource_config["prj_dir"],
+        prf_dir=context.resource_config["prf_dir"],
+        ignore_handled_error=context.resource_config["ignore_handled_error"],
+        target=context.resource_config["target"],
     )
