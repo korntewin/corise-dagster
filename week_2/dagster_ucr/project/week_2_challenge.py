@@ -56,18 +56,21 @@ def dbt_run(context: OpExecutionContext, _start) -> bool:
 )
 def dbt_test(context: OpExecutionContext, _start: bool):
 
-    if _start: yield Output(1, "success")
+    output = context.resources.dbt.test()
+    context.log.info(f"exit_code: {output.return_code}")
+
+    if output.return_code == 0: yield Output(1, "success")
     else: yield Output(2, "failure")
 
 
 @op
 def success_run(context: OpExecutionContext, _start):
-    ...
+    context.log.info("Success!")
 
 
 @op
 def failure_run(context: OpExecutionContext, _start):
-    ...
+    context.log.info("Failure!")
 
 
 @graph

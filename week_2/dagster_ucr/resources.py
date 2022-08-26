@@ -68,6 +68,9 @@ class Dbt:
     def run(self) -> None:
         subprocess.run(["dbt", "run", "--project-dir", self.prj_dir, "--profiles-dir", self.prf_dir])
 
+    def test(self) -> None:
+        subprocess.run(["dbt", "test", "--project-dir", self.prj_dir, "--profiles-dir", self.prf_dir])
+
 # Resources
 @resource(
     config_schema={
