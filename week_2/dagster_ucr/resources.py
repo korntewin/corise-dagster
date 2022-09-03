@@ -66,10 +66,10 @@ class Dbt:
         self.target = target
 
     def run(self) -> None:
-        subprocess.run(["dbt", "run", "--project-dir", self.prj_dir, "--profiles-dir", self.prf_dir])
+        return subprocess.run(["dbt", "run", "--project-dir", self.prj_dir, "--profiles-dir", self.prf_dir]).returncode
 
     def test(self) -> None:
-        subprocess.run(["dbt", "test", "--project-dir", self.prj_dir, "--profiles-dir", self.prf_dir])
+        return subprocess.run(["dbt", "test", "--project-dir", self.prj_dir, "--profiles-dir", self.prf_dir]).returncode
 
 # Resources
 @resource(
@@ -141,7 +141,7 @@ def redis_resource(context):
     config_schema={
         "prj_dir": str,
         "prf_dir": str,
-        "ignore_handled_error": str,
+        "ignore_handled_error": bool,
         "target": str,
     }
 )

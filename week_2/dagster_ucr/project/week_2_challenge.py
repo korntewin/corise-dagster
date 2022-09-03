@@ -2,7 +2,7 @@ from random import randint
 
 from dagster import In, Nothing, String, graph, op, OpExecutionContext, Out, Output
 from dagster_dbt import dbt_cli_resource, dbt_run_op, dbt_test_op
-from dagster_ucr.resources import postgres_resource, Dbt
+from dagster_ucr.resources import postgres_resource, Dbt, dbt_resource
 
 DBT_PROJECT_PATH = "/opt/dagster/dagster_home/dagster_ucr/dbt_test_project/."
 
@@ -56,10 +56,10 @@ def dbt_run(context: OpExecutionContext, _start) -> bool:
 )
 def dbt_test(context: OpExecutionContext, _start: bool):
 
-    output = context.resources.dbt.test()
-    context.log.info(f"exit_code: {output.return_code}")
+    returncode = context.resources.dbt.test()
+    context.log.info(f"exit_code: {returncode}")
 
-    if output.return_code == 0: yield Output(1, "success")
+    if returncode == 0: yield Output(1, "success")
     else: yield Output(2, "failure")
 
 
@@ -96,8 +96,8 @@ docker = {
         },
         "dbt": {
             "config": {
-                "project_dir": DBT_PROJECT_PATH,
-                "profiles_dir": DBT_PROJECT_PATH,
+                "prj_dir": DBT_PROJECT_PATH,
+                "prf_dir": DBT_PROJECT_PATH,
                 "ignore_handled_error": True,
                 "target": "test",
             },
@@ -112,6 +112,6 @@ dbt_docker = dbt.to_job(
     config=docker,
     resource_defs={
         "database": postgres_resource,
-        "dbt": dbt_cli_resource,
+        "dbt": dbt_resource,
     },
 )
