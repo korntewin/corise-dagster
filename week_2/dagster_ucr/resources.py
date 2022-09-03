@@ -1,11 +1,12 @@
 import csv
+import subprocess
 from typing import Iterator
 from unittest.mock import MagicMock
 
 import boto3
 import redis
 import sqlalchemy
-from dagster import Field, Int, String, resource
+from dagster import Field, Int, String, resource, InitResourceContext
 
 
 # Clients
@@ -57,6 +58,19 @@ class Redis:
         self.client.set(name, value)
 
 
+class Dbt:
+    def __init__(self, prj_dir: str, prf_dir: str, ignore_handled_error: bool, target: str):
+        self.prj_dir = prj_dir
+        self.prf_dir = prf_dir
+        self.ignore_handled_error = ignore_handled_error
+        self.target = target
+
+    def run(self) -> None:
+        subprocess.run(["dbt", "run", "--project-dir", self.prj_dir, "--profiles-dir", self.prf_dir])
+
+    def test(self) -> None:
+        subprocess.run(["dbt", "test", "--project-dir", self.prj_dir, "--profiles-dir", self.prf_dir])
+
 # Resources
 @resource(
     config_schema={
@@ -91,13 +105,50 @@ def mock_s3_resource():
     return s3_mock
 
 
-@resource
-def s3_resource():
+@resource(
+    config_schema={
+        "bucket": str,
+        "access_key": str,
+        "secret_key": str,
+        "endpoint_url": str,
+    }
+)
+def s3_resource(context):
     """This resource defines a S3 client"""
-    pass
+    return S3(
+        bucket=context.resource_config["bucket"],
+        access_key=context.resource_config["access_key"],
+        secret_key=context.resource_config["secret_key"],
+        endpoint_url=context.resource_config["endpoint_url"],
+    )
 
 
-@resource
-def redis_resource():
+@resource(
+    config_schema={
+        "host": str,
+        "port": int,
+    }
+)
+def redis_resource(context):
     """This resource defines a Redis client"""
-    pass
+    return Redis(
+        host=context.resource_config["host"],
+        port=context.resource_config["port"],
+    )
+
+
+@resource(
+    config_schema={
+        "prj_dir": str,
+        "prf_dir": str,
+        "ignore_handled_error": str,
+        "target": str,
+    }
+)
+def dbt_resource(context: InitResourceContext) -> Dbt:
+    return Dbt(
+        prj_dir=context.resource_config["prj_dir"],
+        prf_dir=context.resource_config["prf_dir"],
+        ignore_handled_error=context.resource_config["ignore_handled_error"],
+        target=context.resource_config["target"],
+    )
