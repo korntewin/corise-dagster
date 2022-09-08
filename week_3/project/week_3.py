@@ -1,4 +1,5 @@
-from typing import List
+from typing import Iterator, List
+import copy
 
 from dagster import (
     In,
@@ -13,34 +14,51 @@ from dagster import (
     op,
     sensor,
     static_partitioned_config,
+    OpExecutionContext,
+    SensorEvaluationContext
 )
-from project.resources import mock_s3_resource, redis_resource, s3_resource
+from project.resources import mock_s3_resource, redis_resource, s3_resource, S3, Redis
 from project.sensors import get_s3_keys
 from project.types import Aggregation, Stock
 
 
-@op
-def get_s3_data():
-    # Use your ops from week 2
-    pass
+@op(
+    required_resource_keys={"s3"},
+    config_schema={"s3_key": str}
+)
+def get_s3_data(context: OpExecutionContext) -> List[Stock]:
+    s3: S3 = context.resources.s3
+    return [Stock.from_list(s) for s in s3.get_data(context.op_config["s3_key"])]
 
 
 @op
-def process_data():
-    # Use your ops from week 2
-    pass
+def process_data(stocks: List[Stock]) -> Aggregation:
+    highest = max(stocks, key = lambda s: s.high)
+    return Aggregation(
+        date=highest.date,
+        high=highest.high
+    )
 
 
-@op
-def put_redis_data():
-    # Use your ops from week 2
-    pass
+@op(
+    required_resource_keys={"redis"},
+)
+def put_redis_data(context: OpExecutionContext, agg: Aggregation) -> None:
+    redis: Redis = context.resources.redis
+
+    key, value = agg.date.strftime("%Y-%m-%d"), agg.high
+    redis.put_data(name=key, value=value)
+    context.log.info(
+        "Finish putting redis data with "
+        f"key: {key}, value: {value}"
+    )
 
 
 @graph
 def week_3_pipeline():
-    # Use your graph from week 2
-    pass
+    stocks = get_s3_data()
+    agg = process_data(stocks)
+    put_redis_data(agg)
 
 
 local = {
@@ -69,8 +87,11 @@ docker = {
 }
 
 
-def docker_config():
-    pass
+@static_partitioned_config(partition_keys=[str(i) for i in range(1, 11)])
+def docker_config(partition_key: str):
+    copy_docker = copy.deepcopy(docker)
+    copy_docker["ops"]["get_s3_data"]["config"]["s3_key"] = f"prefix/stock_{partition_key}.csv"
+    return copy_docker
 
 
 local_week_3_pipeline = week_3_pipeline.to_job(
@@ -89,14 +110,35 @@ docker_week_3_pipeline = week_3_pipeline.to_job(
         "s3": s3_resource,
         "redis": redis_resource,
     },
+    op_retry_policy=RetryPolicy(max_retries=10, delay=1),
 )
 
 
-local_week_3_schedule = None  # Add your schedule
+local_week_3_schedule = ScheduleDefinition(job=local_week_3_pipeline, cron_schedule="*/15 * * * *")
 
-docker_week_3_schedule = None  # Add your schedule
+docker_week_3_schedule = ScheduleDefinition(job=docker_week_3_pipeline, cron_schedule="0 * * * *")
 
 
-@sensor
-def docker_week_3_sensor():
-    pass
+@sensor(
+    job=docker_week_3_pipeline,
+)
+def docker_week_3_sensor(context: SensorEvaluationContext):
+    bucket = docker["resources"]["s3"]["config"]["bucket"]
+    endpoint = docker["resources"]["s3"]["config"]["endpoint_url"]
+
+    since_key = context.cursor
+    new_keys = get_s3_keys(
+        bucket=bucket,
+        prefix="", 
+        endpoint_url=endpoint,
+        since_key=since_key, 
+    )
+
+    if new_keys:
+        for key in new_keys:
+            run_config = copy.deepcopy(docker)
+            run_config["ops"]["get_s3_data"]["config"]["s3_key"] = key
+            yield RunRequest(run_key=key, run_config=run_config)
+        context.update_cursor(new_keys[-1])
+    else:
+        yield SkipReason("No new s3 files found in bucket.")
