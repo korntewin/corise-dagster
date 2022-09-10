@@ -17,4 +17,4 @@ def repo():
 
 @repository
 def assets_dbt():
-    pass
+    return []

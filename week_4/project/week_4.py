@@ -1,26 +1,58 @@
-from typing import List
+from tokenize import group
+from typing import Iterable, Iterator, List
 
-from dagster import Nothing, asset, with_resources
-from project.resources import redis_resource, s3_resource
+from dagster import Nothing, asset, with_resources, OpExecutionContext, Output
+from project.resources import redis_resource, s3_resource, Redis
 from project.types import Aggregation, Stock
 
 
-@asset
-def get_s3_data():
+@asset(
+    required_resource_keys={"s3"},
+    config_schema={"s3_key": str},
+    group_name="corise",
+)
+def get_s3_data(context: OpExecutionContext):
     # Use your op logic from week 3
-    pass
+    ls = context.resources.s3.get_data(context.op_config["s3_key"])
+    return [*map(lambda text: Stock.from_list(text), ls)]
 
 
-@asset
-def process_data():
+@asset(
+    group_name="corise",
+)
+def process_data(get_s3_data) -> Aggregation:
     # Use your op logic from week 3 (you will need to make a slight change)
-    pass
+    highest = max(get_s3_data, key=lambda s: s.high)
+    return Aggregation(date=highest.date, high=highest.high)
 
 
-@asset
-def put_redis_data():
+@asset(
+    required_resource_keys={"redis"},
+    group_name="corise",
+)
+def put_redis_data(context: OpExecutionContext, process_data: Aggregation) -> None:
     # Use your op logic from week 3 (you will need to make a slight change)
-    pass
+    redis: Redis = context.resources.redis
+    redis.put_data(name=process_data.date.strftime("%Y-%m-%d"), value=f"{process_data.high:02f}")
 
 
-get_s3_data_docker, process_data_docker, put_redis_data_docker = with_resources()
+get_s3_data_docker, process_data_docker, put_redis_data_docker = with_resources(
+    definitions=[get_s3_data, process_data, put_redis_data],
+    resource_defs={"s3": s3_resource, "redis": redis_resource},
+    resource_config_by_key={
+        "s3": {
+            "config": {
+                "bucket": "dagster",
+                "access_key": "test",
+                "secret_key": "test",
+                "endpoint_url": "http://localstack:4566",
+            }
+        },
+        "redis": {
+            "config": {
+                "host": "redis",
+                "port": 6379,
+            }
+        },
+    }
+)
