@@ -1,8 +1,8 @@
 from random import randint
 
 from dagster import AssetIn, asset
-from dagster_dbt import load_assets_from_dbt_project
 from project.dbt_config import DBT_PROJECT_PATH
+
 
 
 @asset(
@@ -20,7 +20,7 @@ def create_dbt_table(context):
     required_resource_keys={"database"},
     op_tags={"kind": "postgres"},
 )
-def insert_dbt_data(context, create_dbt_table):
+def dbt_table(context, create_dbt_table):
     sql = "INSERT INTO analytics.dbt_table (column_1, column_2, column_3) VALUES ('A', 'B', 'C');"
 
     number_of_rows = randint(1, 10)
@@ -32,5 +32,5 @@ def insert_dbt_data(context, create_dbt_table):
 
 
 @asset
-def final(context):
+def final(context, my_second_dbt_model):
     context.log.info("Week 4 Challenge completed")
