@@ -89,6 +89,6 @@ FROM runner AS week_3_4_project
 ENV DAGSTER_CURRENT_IMAGE=corise-dagster-answer-key_project
 ARG COURSE_WEEK
 COPY ${COURSE_WEEK}/project/ ./project
-USER dagster:dagster
+USER root
 EXPOSE 4001
 CMD ["dagster", "api", "grpc", "-h", "0.0.0.0", "-p", "4001", "-f", "project/repo.py"]
